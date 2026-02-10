@@ -1,0 +1,134 @@
+import 'package:flutter/material.dart';
+import 'encryption_service.dart';
+
+void main() {
+  runApp(const EncryptionApp());
+}
+
+class EncryptionApp extends StatelessWidget {
+  const EncryptionApp({super.key});
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false, // Cleaner UI
+      theme: ThemeData(primarySwatch: Colors.blue),
+      home: const EncryptionHome(),
+    );
+  }
+}
+
+class EncryptionHome extends StatefulWidget {
+  const EncryptionHome({super.key});
+  @override
+  State<EncryptionHome> createState() => _EncryptionHomeState();
+}
+
+class _EncryptionHomeState extends State<EncryptionHome> {
+  final TextEditingController _textController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+  String _result = "";
+  String _statusMessage = "";
+
+  void _handleEncrypt() async {
+    // 1. Check if password is empty
+    if (_passwordController.text.isEmpty) {
+      setState(() => _statusMessage = "Error: Please enter a password to encrypt.");
+      return;
+    }
+
+    // 2. Clear status and encrypt
+    setState(() => _statusMessage = "Encrypting...");
+    final encrypted = await EncryptionService.encryptSymmetric(
+        _textController.text, _passwordController.text);
+
+    setState(() {
+      _result = encrypted;
+      _statusMessage = "Encrypted successfully!";
+    });
+  }
+
+  void _handleDecrypt() async {
+    // 1. Pre-flight checks
+    if (!_result.contains("-----BEGIN PGP MESSAGE-----")) {
+      setState(() => _statusMessage = "Error: No PGP message found to decrypt!");
+      return;
+    }
+
+    if (_passwordController.text.isEmpty) {
+      setState(() => _statusMessage = "Error: Password is required for decryption.");
+      return;
+    }
+
+    setState(() => _statusMessage = "Decrypting...");
+
+    // 2. Attempt Decryption
+    final decrypted = await EncryptionService.decryptSymmetric(
+        _result, _passwordController.text);
+
+    setState(() {
+      if (decrypted.contains("Decryption failed")) {
+        _statusMessage = "Incorrect password. Please try again.";
+      } else {
+        _result = decrypted;
+        _statusMessage = "Decryption Successful!";
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text("Secure PGP Vault")),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextField(
+                controller: _textController,
+                decoration: const InputDecoration(labelText: "Text to Encrypt/Decrypt")),
+            TextField(
+                controller: _passwordController,
+                decoration: const InputDecoration(labelText: "Password"),
+                obscureText: true),
+            const SizedBox(height: 16),
+
+            // Display Status Message to User
+            Text(
+              _statusMessage,
+              style: TextStyle(
+                color: _statusMessage.startsWith("Error") ? Colors.red : Colors.green,
+                fontWeight: FontWeight.bold,
+              ),
+              textAlign: TextAlign.center,
+            ),
+
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                ElevatedButton(onPressed: _handleEncrypt, child: const Text("Encrypt")),
+                ElevatedButton(onPressed: _handleDecrypt, child: const Text("Decrypt")),
+              ],
+            ),
+            const SizedBox(height: 20),
+            const Text("Result:", style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.grey[200],
+                border: Border.all(color: Colors.grey[400]!),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              constraints: const BoxConstraints(minHeight: 100, maxHeight: 300),
+              child: SingleChildScrollView(
+                child: SelectableText(_result),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
