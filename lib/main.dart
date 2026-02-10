@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'encryption_service.dart';
 import 'package:flutter/services.dart';
+import 'encryption_service.dart';
 
 void main() {
   runApp(const EncryptionApp());
@@ -8,11 +8,11 @@ void main() {
 
 class EncryptionApp extends StatelessWidget {
   const EncryptionApp({super.key});
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      debugShowCheckedModeBanner: false, // Cleaner UI
-      title: 'Secure PGP Vault',
+      debugShowCheckedModeBanner: false,
       themeMode: ThemeMode.dark,
       theme: ThemeData(
         useMaterial3: true,
@@ -21,7 +21,7 @@ class EncryptionApp extends StatelessWidget {
         inputDecorationTheme: const InputDecorationTheme(
           border: OutlineInputBorder(),
           filled: true,
-        )
+        ),
       ),
       home: const EncryptionHome(),
     );
@@ -35,216 +35,251 @@ class EncryptionHome extends StatefulWidget {
 }
 
 class _EncryptionHomeState extends State<EncryptionHome> {
+  // Shared Controllers/State
   final TextEditingController _textController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   String _result = "";
   String _statusMessage = "";
-
-  void _handleEncrypt() async {
-    // 1. Check if password is empty
-    if (_passwordController.text.isEmpty) {
-      setState(() => _statusMessage = "Error: Please enter a password to encrypt.");
-      return;
-    }
-
-    // 2. Clear status and encrypt
-    setState(() => _statusMessage = "Encrypting...");
-    final encrypted = await EncryptionService.encryptSymmetric(
-        _textController.text, _passwordController.text);
-
-    setState(() {
-      _result = encrypted;
-      _statusMessage = "Encrypted successfully!";
-    });
-  }
-
-  void _handleDecrypt() async {
-    // 1. Pre-flight checks
-    if (!_result.contains("-----BEGIN PGP MESSAGE-----")) {
-      setState(() => _statusMessage = "Error: No PGP message found to decrypt!");
-      return;
-    }
-
-    if (_passwordController.text.isEmpty) {
-      setState(() => _statusMessage = "Error: Password is required for decryption.");
-      return;
-    }
-
-    setState(() => _statusMessage = "Decrypting...");
-
-    // 2. Attempt Decryption
-    final decrypted = await EncryptionService.decryptSymmetric(
-        _result, _passwordController.text);
-
-    setState(() {
-      if (decrypted.contains("Decryption failed")) {
-        _statusMessage = "Incorrect password. Please try again.";
-      } else {
-        _result = decrypted;
-        _statusMessage = "Decryption Successful!";
-      }
-    });
-  }
+  int _selectedDrawerIndex = 0;
 
   void _copyToClipboard() {
     if (_result.isNotEmpty) {
       Clipboard.setData(ClipboardData(text: _result));
-
-      // Show a quick confirmation at the bottom of the screen
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text("Copied to clipboard!"),
-          duration: Duration(seconds: 2),
           behavior: SnackBarBehavior.floating,
         ),
       );
     }
   }
 
+  void _handleEncrypt() async {
+    if (_passwordController.text.isEmpty) {
+      setState(() => _statusMessage = "Error: Password required");
+      return;
+    }
+    final encrypted = await EncryptionService.encryptSymmetric(
+        _textController.text, _passwordController.text);
+    setState(() {
+      _result = encrypted;
+      _statusMessage = "Encrypted successfully";
+    });
+  }
+
+  void _handleDecrypt() async {
+    String source = _textController.text.contains("-----BEGIN PGP")
+        ? _textController.text
+        : _result;
+    if (!source.contains("-----BEGIN PGP")) {
+      setState(() => _statusMessage = "Error: No PGP message found");
+      return;
+    }
+    final decrypted = await EncryptionService.decryptSymmetric(
+        source, _passwordController.text);
+    setState(() {
+      _result = decrypted;
+      _statusMessage = "Decryption successful";
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    // Use the theme colors to keep things consistent
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text("🔐 Secure PGP Vault"),
-        centerTitle: true,
-        elevation: 2,
+    // FIX: DefaultTabController must wrap the Scaffold to provide
+    // the coordinate system for TabBar and TabBarView.
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(_selectedDrawerIndex == 0
+              ? "🔐 Secure PGP Vault"
+              : "🔑 Key Management"),
+          centerTitle: true,
+          // Only show TabBar if the "Vault" (index 0) is selected
+          bottom: _selectedDrawerIndex == 0
+              ? const TabBar(
+            tabs: [
+              Tab(icon: Icon(Icons.lock), text: "Encrypt"),
+              Tab(icon: Icon(Icons.lock_open), text: "Decrypt"),
+            ],
+          )
+              : null,
+        ),
+        drawer: _buildSideMenu(),
+        body: _selectedDrawerIndex == 0
+            ? TabBarView(
+          children: [
+            _buildActionPage(isEncrypt: true),
+            _buildActionPage(isEncrypt: false),
+          ],
+        )
+            : _buildKeysScreen(),
       ),
-      body: Center(
+    );
+  }
+
+  Widget _buildActionPage({required bool isEncrypt}) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24.0),
+      child: Center(
         child: ConstrainedBox(
-          // On Desktop/Ubuntu, this prevents the UI from stretching too wide
           constraints: const BoxConstraints(maxWidth: 600),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                TextField(
-                  controller: _textController,
-                  maxLines: 5, // Better for long messages
-                  decoration: const InputDecoration(
-                    labelText: "Message / PGP Block",
-                    alignLabelWithHint: true,
-                  ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextField(
+                controller: _textController,
+                maxLines: 5,
+                decoration: InputDecoration(
+                  labelText:
+                  isEncrypt ? "Text to Encrypt" : "PGP Message to Decrypt",
+                  hintText: isEncrypt
+                      ? "Enter secret message..."
+                      : "-----BEGIN PGP MESSAGE-----...",
                 ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: _passwordController,
-                  obscureText: true,
-                  decoration: const InputDecoration(
-                    labelText: "Encryption Password",
-                    prefixIcon: Icon(Icons.lock),
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                // Status Message Area
-                if (_statusMessage.isNotEmpty)
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: _statusMessage.contains("Error")
-                          ? Colors.redAccent.withOpacity(0.1)
-                          : Colors.greenAccent.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      _statusMessage,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: _statusMessage.contains("Error")
-                            ? Colors.redAccent
-                            : Colors.greenAccent,
-                      ),
-                    ),
-                  ),
-
-                const SizedBox(height: 24),
-                Row(
-                  children: [
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: _handleEncrypt,
-                        icon: const Icon(Icons.security),
-                        label: const Text("Encrypt"),
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          backgroundColor: colorScheme.primaryContainer,
-                          foregroundColor: colorScheme.onPrimaryContainer,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: _handleDecrypt,
-                        icon: const Icon(Icons.no_encryption_gmailerrorred),
-                        label: const Text("Decrypt"),
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      "RESULT",
-                      style: TextStyle(
-                        letterSpacing: 1.5,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-
-                    if (_result.isNotEmpty)
-                      IconButton(
-                        visualDensity: VisualDensity.compact,
-                        onPressed: _copyToClipboard,
-                        icon: const Icon(Icons.copy_all, size: 20),
-                        tooltip: "Copy to Clipboard",
-                        color: colorScheme.primary,
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: colorScheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: colorScheme.outline.withOpacity(0.5)),
-                  ),
-                  constraints: const BoxConstraints(minHeight: 150, maxHeight: 300),
-                  child: SingleChildScrollView(
-                    child: SelectableText(
-                      _result,
-                      style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
-                    ),
-                  ),
-                ),
-                // Clear Button
-                TextButton.icon(
-                  onPressed: () {
-                    setState(() {
-                      _textController.clear();
-                      _passwordController.clear();
-                      _result = "";
-                      _statusMessage = "";
-                    });
-                  },
-                  icon: const Icon(Icons.delete_outline),
-                  label: const Text("Clear All Fields"),
-                ),
-              ],
-            ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _passwordController,
+                obscureText: true,
+                decoration: const InputDecoration(
+                    labelText: "Password", prefixIcon: Icon(Icons.key)),
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                onPressed: isEncrypt ? _handleEncrypt : _handleDecrypt,
+                icon: Icon(isEncrypt ? Icons.security : Icons.vpn_key),
+                label: Text(isEncrypt ? "Encrypt Data" : "Decrypt Data"),
+                style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16)),
+              ),
+              const SizedBox(height: 24),
+              _buildResultSection(),
+            ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildResultSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text("RESULT",
+                style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+            if (_result.isNotEmpty)
+              IconButton(icon: const Icon(Icons.copy), onPressed: _copyToClipboard),
+          ],
+        ),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surfaceVariant,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          constraints: const BoxConstraints(minHeight: 100, maxHeight: 200),
+          child: SingleChildScrollView(
+              child: SelectableText(_result,
+                  style: const TextStyle(fontFamily: 'monospace'))),
+        ),
+        if (_statusMessage.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(_statusMessage,
+                style: TextStyle(
+                    color: _statusMessage.contains("Error")
+                        ? Colors.red
+                        : Colors.green)),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildSideMenu() {
+    return Drawer(
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            DrawerHeader(
+              decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.primaryContainer),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: const [
+                  Icon(Icons.security, size: 48),
+                  SizedBox(height: 10),
+                  Text("PGP Vault v1.0",
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                ],
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.vignette),
+              title: const Text("Vault"),
+              selected: _selectedDrawerIndex == 0,
+              onTap: () {
+                setState(() => _selectedDrawerIndex = 0);
+                Navigator.pop(context);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.key),
+              title: const Text("Keys"),
+              selected: _selectedDrawerIndex == 1,
+              onTap: () {
+                setState(() => _selectedDrawerIndex = 1);
+                Navigator.pop(context);
+              },
+            ),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.settings),
+              title: const Text("Settings"),
+              onTap: () => Navigator.pop(context),
+            ),
+          ],
+        ));
+  }
+
+  Widget _buildKeysScreen() {
+    final List<Map<String, String>> mockKeys = [
+      {"name": "John Doe", "id": "0x8F2D1A", "type": "Private/Public"},
+      {"name": "Jane Smith", "id": "0x3C4B92", "type": "Public Key"}, // Fixed typo 'is' to 'id'
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        children: [
+          Expanded(
+            child: ListView.builder(
+              itemCount: mockKeys.length,
+              itemBuilder: (context, index) {
+                return Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.vpn_key_outlined),
+                    title: Text(mockKeys[index]['name']!),
+                    subtitle: Text(
+                        "ID: ${mockKeys[index]['id']} • ${mockKeys[index]['type']}"),
+                    trailing: const Icon(Icons.more_vert),
+                  ),
+                );
+              },
+            ),
+          ),
+          FloatingActionButton.extended(
+            onPressed: () {
+              // Logic for generating a new key pair will go here
+            },
+            label: const Text("Generate New Key"),
+            icon: const Icon(Icons.add),
+          ),
+        ],
       ),
     );
   }
