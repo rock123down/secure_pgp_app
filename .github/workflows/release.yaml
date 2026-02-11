@@ -1,0 +1,53 @@
+name: Flutter Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.10.0'
+          channel: 'stable'
+
+      - name: Install Dependencies
+        run: flutter pub get
+
+      - name: Generate Launcher Icons
+        run: flutter pub run flutter_launcher_icons
+
+      - name: Build Android APK
+        run: flutter build apk --release
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Secure PGP Vault ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          body: |
+            ## Release v1.0.2 Notes
+            * **Hardware Security:** Keys now persist in the Android KeyStore.
+            * **UI Overhaul:** Added custom app icon and independent wipe timers.
+            * **Bug Fixes:** Resolved manifest and storage persistence issues.
+          draft: false
+          prerelease: false
+          files: build/app/outputs/flutter-apk/app-release.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
