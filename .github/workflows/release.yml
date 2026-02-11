@@ -1,0 +1,56 @@
+name: Flutter Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*' # Triggers whenever you push a tag like v1.0.2
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    # Permissions are required for the Action to create a Release and upload files
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.10.0'
+          channel: 'stable'
+
+      - name: Install Dependencies
+        run: flutter pub get
+
+      - name: Generate Launcher Icons
+        run: flutter pub run flutter_launcher_icons
+
+      - name: Build Android APK
+        run: flutter build apk --release
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Secure PGP Vault ${{ github.ref_name }}
+          tag_name: ${{ github.ref }}
+          body: |
+            ## Release Notes
+            * **Secure Key Storage:** Keys are now persisted using hardware-backed Android KeyStore.
+            * **Independent Timers:** Encryption and Decryption tabs now have separate security wipe timers.
+            * **New UI:** Added custom application icon and polished Material 3 theme.
+          draft: false
+          prerelease: false
+          files: |
+            build/app/outputs/flutter-apk/app-release.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
