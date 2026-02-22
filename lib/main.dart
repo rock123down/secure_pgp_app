@@ -303,7 +303,7 @@ class _EncryptionHomeState extends State<EncryptionHome> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               DropdownButtonFormField<Map<String, String>>(
-                initialValue: _selectedKey,
+                initialValue: _myKeys.contains(_selectedKey) ? _selectedKey : null,
                 decoration: InputDecoration(
                   labelText: isEncrypt ? "Select Recipient's Public Key" : "Select Your Private Key",
                   prefixIcon: const Icon(Icons.vpn_key),
@@ -500,13 +500,8 @@ class _EncryptionHomeState extends State<EncryptionHome> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         IconButton(
-                          icon: const Icon(Icons.copy),
-                          onPressed: () {
-                            Clipboard.setData(ClipboardData(text: keyItem['publicKey']!));
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text("Public Key Copied!")),
-                            );
-                          },
+                          icon: const Icon(Icons.info_outline, color: Colors.blueAccent,),
+                          onPressed: () => _showKeyInfo(_myKeys[index]),
                         ),
                         IconButton(
                           icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
@@ -739,7 +734,7 @@ class _EncryptionHomeState extends State<EncryptionHome> {
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red[900]),
             onPressed: () async {
               Navigator.pop(context);
-              await _deletekey(index);
+              await _deleteKey(index);
             },
             child: const Text("Delete", style: TextStyle(color: Colors.white)),
             ),
@@ -748,7 +743,7 @@ class _EncryptionHomeState extends State<EncryptionHome> {
     );
   }
 
-  Future<void> _deletekey(int index) async {
+  Future<void> _deleteKey(int index) async {
     setState(() {
       if (_selectedKey == _myKeys[index]) {
         _selectedKey = null;
@@ -758,6 +753,83 @@ class _EncryptionHomeState extends State<EncryptionHome> {
 
     await _saveKeysToStorage();
 
-    _showSuccessSheet("Key deleted successfylly");
+    _showSuccessSheet("Key deleted successfully");
+  }
+
+  void _showKeyInfo(Map<String, String> keyData) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        maxChildSize: 0.9,
+        expand: false,
+        builder: (context, scrollController) => Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: SingleChildScrollView(
+            controller: scrollController,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 20),
+                    decoration: const BoxDecoration(color: Colors.grey, borderRadius: BorderRadius.all(Radius.circular(10))),
+                  ),
+                ),
+                const Text("Key Details", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 20),
+                _infoTile("Name", keyData['name']!),
+                _infoTile("Key ID", keyData['id']!),
+                _infoTile("Type", keyData['type']!),
+                const Divider(height: 30),
+                const Text("Public Key Block", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.black,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.grey[800]!),
+                  ),
+                  child: SelectableText(
+                    keyData['publicKey']!,
+                    style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: Colors.greenAccent),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    Clipboard.setData(ClipboardData(text: keyData['publicKey']!));
+                    Navigator.pop(context);
+                  },
+                  icon: const Icon(Icons.copy),
+                  label: const Text("Copy Public Key Block"),
+                  style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 50)),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _infoTile(String label, value) {
+    return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey),),
+          Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+        ],
+      ),
+    );
   }
 }
