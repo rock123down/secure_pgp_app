@@ -24,14 +24,16 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.10.0'
+          flutter-version: '3.10.0' # Matches Dart 3.0.0
           channel: 'stable'
+          cache: true # Speeds up future runs
 
       - name: Install Dependencies
         run: flutter pub get
 
+      # Optional: Only run if you have icons configured in pubspec
       - name: Generate Launcher Icons
-        run: flutter pub run flutter_launcher_icons
+        run: flutter pub run flutter_launcher_icons || echo "Icons generation skipped"
 
       - name: Build Android APK
         run: flutter build apk --release
@@ -39,13 +41,14 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
+          # Dynamic name based on the actual tag pushed
           name: Secure PGP Vault ${{ github.ref_name }}
           tag_name: ${{ github.ref_name }}
           body: |
-            ## Release v1.0.2 Notes
-            * **Hardware Security:** Keys now persist in the Android KeyStore.
-            * **UI Overhaul:** Added custom app icon and independent wipe timers.
-            * **Bug Fixes:** Resolved manifest and storage persistence issues.
+            ## Release ${{ github.ref_name }} Notes
+            * **Key Management:** Added deletion and detailed key information viewer.
+            * **Security:** Enforced mandatory passwords for private key protection.
+            * **UI/UX:** Consistent bottom-sheet feedback and improved vault navigation.
           draft: false
           prerelease: false
           files: build/app/outputs/flutter-apk/app-release.apk
