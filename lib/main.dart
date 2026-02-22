@@ -438,10 +438,10 @@ class _EncryptionHomeState extends State<EncryptionHome> {
           children: [
             DrawerHeader(
               decoration: BoxDecoration(color: Theme.of(context).colorScheme.primaryContainer),
-              child: Column(
+              child: const Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.end,
-                children: const [
+                children: [
                   Icon(Icons.security, size: 48),
                   SizedBox(height: 10),
                   Text("PGP Vault v1.0", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
@@ -525,60 +525,153 @@ class _EncryptionHomeState extends State<EncryptionHome> {
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Generate Key Pair"),
-        content: Column(
+      builder: (context) {
+        // We use a StatefulBuilder to refresh the error message inside the dialog
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            String? errorMessage;
+
+            return AlertDialog(
+              title: const Row(
+                children: [
+                  Icon(Icons.key_rounded, color: Colors.blueGrey),
+                  SizedBox(width: 10),
+                  Text("Generate Key Pair"),
+                ],
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      "Create a new identity. The password is required to secure your private key.",
+                      style: TextStyle(fontSize: 13, color: Colors.grey),
+                    ),
+                    const SizedBox(height: 20),
+                    TextField(
+                      controller: nameController,
+                      decoration: const InputDecoration(
+                        labelText: "Full Name",
+                        prefixIcon: Icon(Icons.person_outline),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: emailController,
+                      decoration: const InputDecoration(
+                        labelText: "Email Address",
+                        prefixIcon: Icon(Icons.alternate_email),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: passController,
+                      obscureText: true,
+                      decoration: const InputDecoration(
+                        labelText: "Password",
+                        prefixIcon: Icon(Icons.lock_outline),
+                        hintText: "Don't leave this blank",
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text("Cancel"),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    // VALIDATION: Similar logic to your Passphrase prompt
+                    if (nameController.text.isEmpty ||
+                        emailController.text.isEmpty ||
+                        passController.text.isEmpty) {
+
+                      // Show an error bottom sheet instead of a snackbar
+                      _showErrorSheet("All fields are required to generate a secure key.");
+                      return;
+                    }
+
+                    // Show loading
+                    showDialog(
+                      context: context,
+                      barrierDismissible: false,
+                      builder: (context) => const Center(child: CircularProgressIndicator()),
+                    );
+
+                    try {
+                      final keyPair = await EncryptionService.generateKeyPair(
+                          nameController.text,
+                          emailController.text,
+                          passController.text
+                      );
+
+                      setState(() {
+                        _myKeys.add({
+                          "name": nameController.text,
+                          "id": "0x${keyPair.publicKey.hashCode.toRadixString(16).toLowerCase()}",
+                          "type": "Private/Public",
+                          "publicKey": keyPair.publicKey,
+                          "privateKey": keyPair.privateKey,
+                        });
+                      });
+
+                      await _saveKeysToStorage();
+
+                      Navigator.pop(context); // Pop loading
+                      Navigator.pop(context); // Pop generation dialog
+
+                      _showSuccessSheet("Key Pair Generated Successfully");
+                    } catch (e) {
+                      Navigator.pop(context); // Pop loading
+                      _showErrorSheet("Generation failed: $e");
+                    }
+                  },
+                  child: const Text("Generate"),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+// Add these helper methods for a consistent "Passphrase UI" feel
+  void _showErrorSheet(String message) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.red[900],
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(20),
+        child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(
-                controller: nameController, decoration: const InputDecoration(labelText: "Full Name")),
-            const SizedBox(height: 8),
-            TextField(controller: emailController, decoration: const InputDecoration(labelText: "Email")),
-            const SizedBox(height: 8),
-            TextField(
-                controller: passController,
-                obscureText: true,
-                decoration: const InputDecoration(labelText: "Password")),
+            const Icon(Icons.error_outline, color: Colors.white, size: 40),
+            const SizedBox(height: 10),
+            Text(message, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+            const SizedBox(height: 20),
           ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
-          ElevatedButton(
-            onPressed: () async {
-              showDialog(
-                  context: context,
-                  barrierDismissible: false,
-                  builder: (context) => const Center(child: CircularProgressIndicator()));
+      ),
+    );
+  }
 
-              try {
-                final keyPair = await EncryptionService.generateKeyPair(
-                    nameController.text, emailController.text, passController.text);
-
-                setState(() {
-                  _myKeys.add({
-                    "name": nameController.text,
-                    "id": "0x${keyPair.publicKey.hashCode.toRadixString(16).toLowerCase()}",
-                    "type": "Private/Public",
-                    "publicKey": keyPair.publicKey,
-                    "privateKey": keyPair.privateKey,
-                  });
-                });
-
-                await _saveKeysToStorage();
-
-                Navigator.pop(context);
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Key Pair Generated")),
-                );
-              } catch (e) {
-                Navigator.pop(context);
-                print("Error generating key: $e");
-              }
-            },
-            child: const Text("Generate"),
-          ),
-        ],
+  void _showSuccessSheet(String message) {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.check_circle_outline, color: Colors.green, size: 40),
+            const SizedBox(height: 10),
+            Text(message, style: const TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 20),
+          ],
+        ),
       ),
     );
   }
