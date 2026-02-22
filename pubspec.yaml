@@ -13,6 +13,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   openpgp: ^3.10.6
   flutter_secure_storage: ^9.2.4
+  file_picker: ^10.3.10
 
 dev_dependencies:
   flutter_test:

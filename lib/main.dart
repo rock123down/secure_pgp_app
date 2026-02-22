@@ -4,6 +4,9 @@ import 'encryption_service.dart';
 import 'dart:async';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'dart:convert';
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
+import 'package:file_picker/file_picker.dart';
 
 void main() {
   runApp(const EncryptionApp());
@@ -70,6 +73,123 @@ class _EncryptionHomeState extends State<EncryptionHome> {
   void initState() {
     super.initState();
     _loadKeysFromStorage(); // Load Keys as soon as the app starts
+  }
+
+  // IMPORT KEYS LOGIC
+
+  Future<void> _handleImportBackup() async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pgp', 'keys', 'asc', 'key'],
+      );
+
+      if (result != null && result.files.single.path != null) {
+        File file = File(result.files.single.path!);
+        String encryptedData = await file.readAsString();
+
+        await _importBackup(encryptedData);
+      } else {
+        debugPrint("User canceled file selection");
+      }
+    } catch (e) {
+      _showErrorSheet("Failed to read file: $e");
+    }
+  }
+
+  // --- SECURE BACKUP LOGIC ---
+  Future<void> _backupKeys() async {
+    if (_myKeys.isEmpty) {
+      _showErrorSheet("No keys found to backup.");
+      return;
+    }
+
+    // Reuse your passphrase UI to get a password for the backup file
+    _promptForPassword((backupPassword) async {
+      if (backupPassword.isEmpty) {
+        _showErrorSheet("A password is required to encrypt the backup file.");
+        return;
+      }
+
+      try {
+        // 1. Convert keys to JSON string
+        String jsonContent = jsonEncode(_myKeys);
+
+        // 2. Encrypt the entire JSON string using the backup password
+        String encryptedBackup = await EncryptionService.encryptSymmetric(
+            jsonContent, backupPassword);
+
+        // 3. Find path and save as .pgp (unreadable by text editors)
+        final directory = await getApplicationDocumentsDirectory();
+        final String timestamp = DateTime.now().millisecondsSinceEpoch.toString();
+        final File file = File('${directory.path}/vault_backup_$timestamp.pgp');
+
+        await file.writeAsString(encryptedBackup);
+
+        _showBackupSuccessDialog(file.path);
+      } catch (e) {
+        _showErrorSheet("Backup failed: $e");
+      }
+    });
+  }
+
+  // --- RESTORE LOGIC ---
+  Future<void> _importBackup(String encryptedData) async {
+    _promptForPassword((password) async {
+      try {
+        // 1. Decrypt the symmetric wrapper
+        String decryptedJson = await EncryptionService.decryptSymmetric(
+            encryptedData, password);
+
+        // 2. Parse the JSON
+        List<dynamic> decoded = jsonDecode(decryptedJson);
+        List<Map<String, String>> importedKeys = decoded.map((item) {
+          return Map<String, String>.from(item as Map);
+        }).toList();
+
+        // 3. Merge keys and save
+        setState(() {
+          // Check for duplicates by ID before adding if desired
+          _myKeys.addAll(importedKeys);
+        });
+        await _saveKeysToStorage();
+
+        _showSuccessSheet("${importedKeys.length} keys imported successfully!");
+      } catch (e) {
+        _showErrorSheet("Restore failed. Incorrect password or corrupted file.");
+      }
+    });
+  }
+
+  // --- UI HELPER FOR BACKUP PATH ---
+  void _showBackupSuccessDialog(String path) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.lock_outline, color: Colors.green),
+            SizedBox(width: 10),
+            Text("Encrypted Backup"),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text("Your vault is now encrypted and saved at:"),
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(8),
+              color: Colors.black,
+              child: SelectableText(path, style: const TextStyle(color: Colors.amberAccent, fontSize: 11)),
+            ),
+            const SizedBox(height: 10),
+            const Text("The file is unreadable without your backup password.", style: TextStyle(fontSize: 12, color: Colors.grey)),
+          ],
+        ),
+        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text("OK"))],
+      ),
+    );
   }
 
   // SAVE logic
@@ -466,6 +586,22 @@ class _EncryptionHomeState extends State<EncryptionHome> {
                 Navigator.pop(context);
               },
             ),
+            ListTile(
+              leading: const Icon(Icons.backup_outlined),
+              title: const Text("Backup all Keys"),
+              onTap: () {
+                Navigator.pop(context);
+                _backupKeys();
+              }
+            ),
+            ListTile(
+              leading: const Icon(Icons.download_outlined),
+              title: const Text("Import Backup"),
+              onTap: () async {
+                Navigator.pop(context);
+                _handleImportBackup();
+              },
+            ),
             const Divider(),
             ListTile(
               leading: const Icon(Icons.settings),
@@ -832,4 +968,5 @@ class _EncryptionHomeState extends State<EncryptionHome> {
       ),
     );
   }
+
 }
