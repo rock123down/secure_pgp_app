@@ -490,18 +490,29 @@ class _EncryptionHomeState extends State<EncryptionHome> {
                 : ListView.builder(
               itemCount: _myKeys.length,
               itemBuilder: (context, index) {
+                final keyItem = _myKeys[index];
                 return Card(
                   child: ListTile(
                     leading: const Icon(Icons.vpn_key_outlined),
-                    title: Text(_myKeys[index]['name']!),
-                    subtitle: Text("ID: ${_myKeys[index]['id']} • ${_myKeys[index]['type']}"),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.copy),
-                      onPressed: () {
-                        Clipboard.setData(ClipboardData(text: _myKeys[index]['publicKey']!));
-                        ScaffoldMessenger.of(context)
-                            .showSnackBar(const SnackBar(content: Text("Public Key Copied!")));
-                      },
+                    title: Text(keyItem['name']!),
+                    subtitle: Text("ID: ${keyItem['id']} • ${keyItem['type']}"),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.copy),
+                          onPressed: () {
+                            Clipboard.setData(ClipboardData(text: keyItem['publicKey']!));
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text("Public Key Copied!")),
+                            );
+                          },
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                          onPressed: () => _confirmDeleteKey(index),
+                        ),
+                      ],
                     ),
                   ),
                 );
@@ -713,5 +724,40 @@ class _EncryptionHomeState extends State<EncryptionHome> {
         ),
       ),
     );
+  }
+
+  void _confirmDeleteKey(int index) {
+    showDialog(context: context, builder: (context) => AlertDialog(
+      title: const Text("Delete Key Pair?"),
+      content: Text("Are you sure you want to delete '${_myKeys[index]['name']}'? This action cannot be undone."),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text("Cancel"),
+        ),
+        ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red[900]),
+            onPressed: () async {
+              Navigator.pop(context);
+              await _deletekey(index);
+            },
+            child: const Text("Delete", style: TextStyle(color: Colors.white)),
+            ),
+      ],
+    ),
+    );
+  }
+
+  Future<void> _deletekey(int index) async {
+    setState(() {
+      if (_selectedKey == _myKeys[index]) {
+        _selectedKey = null;
+      }
+      _myKeys.removeAt(index);
+    });
+
+    await _saveKeysToStorage();
+
+    _showSuccessSheet("Key deleted successfylly");
   }
 }
